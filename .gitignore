@@ -1,0 +1,10 @@
+/log/
+.idea
+__pycache__
+**/_build
+
+*.egg-info
+dist
+
+# Folder for internal quick tests
+internal_tests
