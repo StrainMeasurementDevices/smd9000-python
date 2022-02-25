@@ -27,7 +27,7 @@ class SMD9000:
         self.is_connected = False               # Flag to determine if the sensor is connected
         self._ser = None                        # Reference to a serial class object
         self._ser_lock = threading.Lock()       # Create a lock, in case the library is to be used with multiple threads
-        self._baud_rate = 115200                # Baud Rate of the sensor
+        self._baud_rate = 57600                # Baud Rate of the sensor
         self._log = logging.getLogger('SMD9000')    # Get a logger with the name 'SMD9000'
         self._read_thread = threading.Thread(target=self._read_thread)
 
@@ -89,6 +89,10 @@ class SMD9000:
             return True
         return False
 
+    def disconnect(self):
+        self._ser.close()
+        self.is_connected = False
+
     def _read_thread(self):
         """
         This is a thread that continuously reads from the SMD9000 sensor. Used when streaming is enabled
@@ -105,6 +109,21 @@ class SMD9000:
         mc = self._ser_read_until()
         mc = self.ieee_float_to_python(mc)
         return mc
+
+    def set_stream_rate(self, stream_rate: int) -> None:
+        """
+        Sets the streaming rate for streaming mode
+
+        Args:
+            stream_rate (int): The stream rate, between 1 and 400
+
+        Raises:
+            UserWarning: If the input stream rate is not withing a valid range
+        """
+        if not 1 < stream_rate < 400:
+            raise UserWarning("Invalid streaming rate")
+        self._ser.write('setstreamrate {:d}'.format(stream_rate))
+        self.check_ack()
 
     def get_adc_capture(self) -> typing.Tuple[list, list]:
         """
@@ -125,7 +144,7 @@ class SMD9000:
         dns = dns.split(',')[1:]
         return ups, dns
 
-    def check_if_device_is_smd9000(self):
+    def check_if_device_is_smd9000(self) -> bool:
         """
         Checks if the connected device is actually an SMD9000 sensor
 
@@ -194,6 +213,14 @@ class SMD9000:
                 return ret
             except serial.SerialException:
                 raise SMD9000ReadException()
+
+    def check_ack(self) -> None:
+        """
+        Reads the next returned line from the sensor which is expected to be an acknowledgement
+        """
+        r = self._ser_read_until()
+        if r != "ok":
+            raise smd9000.SMD9000ReadException()
 
     @staticmethod
     def ieee_float_to_python(ieee_float: str) -> float:
