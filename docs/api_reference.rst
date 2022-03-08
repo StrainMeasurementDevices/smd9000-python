@@ -28,7 +28,11 @@ CQV Main Class
 
 CQV Data Class
 ++++++++++++++++++++++++
-.. autoclass:: SMD9000Info
+.. autoclass:: SMD9000Revisions
+  :members:
+  :undoc-members:
+
+.. autoclass:: SMD9000Data
   :members:
   :undoc-members:
 

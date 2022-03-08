@@ -12,14 +12,29 @@ import logging                                  # Import logging to log
 import threading                                # Import to create a lock
 import dataclasses
 
+
 class SMD9000ReadException(Exception):
     pass
 
+
 @dataclasses.dataclass
-class SMD9000Info:
+class SMD9000Revisions:
     firmware_major_rev: int
     firmware_minor_rev: int
     hardware_rev: str
+
+
+@dataclasses.dataclass
+class SMD9000Data:
+    flowrate: float
+    """The flowrate"""
+    accum: float
+    """The accumulated flowarate"""
+    tof: float
+    """Time of Flight"""
+    sig: int
+    """The signal strength from 0 to 2047"""
+
 
 class SMD9000:
     def __init__(self):
@@ -29,30 +44,12 @@ class SMD9000:
         self._ser_lock = threading.Lock()       # Create a lock, in case the library is to be used with multiple threads
         self._baud_rate = 57600                # Baud Rate of the sensor
         self._log = logging.getLogger('SMD9000')    # Get a logger with the name 'SMD9000'
+
         self._read_thread = threading.Thread(target=self._read_thread)
+        self._read_thread_callback = None       # type: typing.Union[None, typing.Callable[[SMD9000Data], None]]
+        self._exit_read_thread = False
 
-    def get_available_sensors(self) -> list:
-        """
-        Returns: A list of available SMD9000 sensors
-        """
-        available_list = []
-        device_list = serial_tools.comports()
-        for x in device_list:
-            try:
-                if sys.platform == 'win32':
-                    if x.device == 'COM1':
-                        continue
-                    if 'SMD' in x.serial_number and x.vid == 0x0403 and x.pid == 0x6001:
-                        available_list.append(x.device)
-                # If using a REAL operating system
-                else:
-                    if 'SMD9000' in x.product and x.vid == 0x0403 and x.pid == 0x6001:
-                        available_list.append(x.device)
-            except TypeError:
-                continue
-        return available_list
-
-    def connect(self, device: str = None) -> bool:
+    def connect(self, device: str) -> bool:
         """
         Connects to a SMD9000 sensor.
 
@@ -69,25 +66,19 @@ class SMD9000:
         if self.is_connected is True:
             self._log.warning('Already connected to an SMD9000 sensor')
             raise UserWarning('Already connected to an SMD9000 sensor')
-        device_connection_list = []
-        if device is None:
-            device_connection_list = self.get_available_sensors()
-        else:
-            device_connection_list.append(device)
 
-        for d in device_connection_list:
-            try:
-                self._ser = serial.Serial(d, self._baud_rate, timeout=1)
-            except serial.SerialException:
-                self._log.debug('serial.SerialException for device on %s port' % d)
-                if self._ser is not None:
-                    self._ser.close()
-                continue
-            self._log.info('Found SMD9000 on port %s' % d)
-            self.is_connected = True
-            self._ser.flush()
-            return True
-        return False
+        try:
+            self._ser = serial.Serial(device, self._baud_rate, timeout=1)
+        except serial.SerialException:
+            self._log.debug('serial.SerialException for device on %s port' % device)
+            if self._ser is not None:
+                self._ser.close()
+            return False
+        self._log.info('Found SMD9000 on port %s' % device)
+        self.is_connected = True
+        # TODO: Check if the sensor is connected by sending a command
+        self._ser.flush()
+        return True
 
     def disconnect(self):
         self._ser.close()
@@ -95,9 +86,29 @@ class SMD9000:
 
     def _read_thread(self):
         """
-        This is a thread that continuously reads from the SMD9000 sensor. Used when streaming is enabled
+        This is a thread that continuously reads from the SMD9000 sensor
         """
-        pass
+        while not self._exit_read_thread:
+            if self._ser.in_waiting:
+                self._ser.read_until()
+
+    def start_data_stream(self, callback_def):
+        """
+        Function that start a data stream readout
+
+        Args:
+            callback_def: A function that gets called everytime the data stream is updated.
+                          This function must accept a single :class`SMD9000Data` variable as it's input.
+        """
+        self._read_thread_callback = callback_def
+        self._ser_write('datastreamon')
+
+    def stop_data_stream(self):
+        """
+        Function that stops a data stream readout
+        """
+        self._ser_write('datastreamoff')
+        self._read_thread_callback = None
 
     def get_meter_constant(self) -> float:
         """
@@ -106,6 +117,17 @@ class SMD9000:
         Returns: The meter constant
         """
         self._ser_write('getmc')
+        mc = self._ser_read_until()
+        mc = self.ieee_float_to_python(mc)
+        return mc
+
+    def get_offset(self) -> float:
+        """
+        Get the offset currently in use by the sensor
+
+        Returns: The offset
+        """
+        self._ser_write('getoffset')
         mc = self._ser_read_until()
         mc = self.ieee_float_to_python(mc)
         return mc
@@ -123,7 +145,7 @@ class SMD9000:
         if not 1 < stream_rate < 400:
             raise UserWarning("Invalid streaming rate")
         self._ser.write('setstreamrate {:d}'.format(stream_rate))
-        self.check_ack()
+        self._check_ack()
 
     def get_adc_capture(self) -> typing.Tuple[list, list]:
         """
@@ -156,7 +178,7 @@ class SMD9000:
             return True
         return False
 
-    def get_info(self) -> SMD9000Info:
+    def get_revisions(self) -> SMD9000Revisions:
         """
         Gets the hardware and firmware revision from the sensor
 
@@ -178,7 +200,7 @@ class SMD9000:
             raise SMD9000ReadException()
         f = firmware_rev[1].split(".")
         try:
-            ret = SMD9000Info(hardware_rev=hardware_rev[1], firmware_major_rev=int(f[0]), firmware_minor_rev=int(f[1]))
+            ret = SMD9000Revisions(hardware_rev=hardware_rev[1], firmware_major_rev=int(f[0]), firmware_minor_rev=int(f[1]))
         except ValueError:
             raise UserWarning("Invalid return: Unable to integerize the firmware revision")
         return ret
@@ -191,8 +213,9 @@ class SMD9000:
                 s: What to write to the SMD9000
             Raises: :exception:`serial.SerialException` if there is an error writing to the port on pyserial's end
         """
-        self._ser.write((s+'\n').encode('utf-8'))
-        self._log.debug("Written to CQV: %s" % (s+'\n').encode('utf-8'))
+        with self._ser_lock:
+            self._ser.write((s+'\n').encode('utf-8'))
+            self._log.debug("Written to SMD9000: %s" % (s+'\n').encode('utf-8'))
 
     def _ser_read_until(self) -> str:
         """
@@ -207,20 +230,20 @@ class SMD9000:
         with self._ser_lock:
             try:
                 ret = self._ser.read_until()
-                self._log.debug("Read from CQV: %s" % ret)
+                self._log.debug("Read from SMD9000: %s" % ret)
                 ret = ret.decode('utf-8')
                 ret = ret.rstrip()
                 return ret
             except serial.SerialException:
                 raise SMD9000ReadException()
 
-    def check_ack(self) -> None:
+    def _check_ack(self) -> None:
         """
         Reads the next returned line from the sensor which is expected to be an acknowledgement
         """
         r = self._ser_read_until()
         if r != "ok":
-            raise smd9000.SMD9000ReadException()
+            raise SMD9000ReadException()
 
     @staticmethod
     def ieee_float_to_python(ieee_float: str) -> float:
