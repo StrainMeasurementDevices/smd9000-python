@@ -42,7 +42,7 @@ class SMD9000:
         self.is_connected = False               # Flag to determine if the sensor is connected
         self._ser = None                        # Reference to a serial class object
         self._ser_lock = threading.Lock()       # Create a lock, in case the library is to be used with multiple threads
-        self._baud_rate = 57600                # Baud Rate of the sensor
+        self._baud_rate = 115200                # Baud Rate of the sensor
         self._log = logging.getLogger('SMD9000')    # Get a logger with the name 'SMD9000'
 
         self._read_thread = threading.Thread(target=self._read_thread)
@@ -118,6 +118,7 @@ class SMD9000:
         """
         self._ser_write('getmc')
         mc = self._ser_read_until()
+        mc = mc.split(':')[1].strip()
         mc = self.ieee_float_to_python(mc)
         return mc
 
@@ -129,6 +130,7 @@ class SMD9000:
         """
         self._ser_write('getoffset')
         mc = self._ser_read_until()
+        mc = mc.split(':')[1].strip()
         mc = self.ieee_float_to_python(mc)
         return mc
 
@@ -157,13 +159,20 @@ class SMD9000:
         ups = self._ser_read_until()
         dns = self._ser_read_until()
         # Check for the starting string
-        if not ups.startswith('ups'):
-            raise SMD9000ReadException("Read data did not include the 'usp' header")
-        if not dns.startswith('dnd'):
-            raise SMD9000ReadException("Read data did not include the 'dns' header")
+        if not ups.startswith('Upstream:'):
+            raise SMD9000ReadException("Read data did not include the Upstream header")
+        if not dns.startswith('Downstream:'):
+            raise SMD9000ReadException("Read data did not include the Downstream header")
         # Split the data by commas and remove the header
-        ups = ups.split(',')[1:]
-        dns = dns.split(',')[1:]
+        ups = ups.split(':')[1].strip()
+        dns = dns.split(':')[1].strip()
+
+        ups = ups.split(',')[:-1]
+        dns = dns.split(',')[:-1]
+
+        ups = [struct.unpack(">h", bytes.fromhex(u))[0] for u in ups]
+        dns = [struct.unpack(">h", bytes.fromhex(d))[0] for d in dns]
+
         return ups, dns
 
     def check_if_device_is_smd9000(self) -> bool:
@@ -192,11 +201,12 @@ class SMD9000:
         self._ser_write('getversion')
         dev_name = self._ser_read_until()                   # Read the hardware and firmware revision
         hardware_rev, firmware_rev = dev_name.split(',')    # Split the return string by comma
-        hardware_rev = hardware_rev.split(":")
-        firmware_rev = firmware_rev.split(":")
-        if hardware_rev[0] != "Hardware:":
+        hardware_rev = [s.strip() for s in hardware_rev.split(":")]
+        firmware_rev = [s.strip() for s in firmware_rev.split(":")]
+        print(hardware_rev, firmware_rev)
+        if hardware_rev[0] != "Hardware":
             raise SMD9000ReadException()
-        if firmware_rev[0] != "Firmware:":
+        if firmware_rev[0] != "Firmware":
             raise SMD9000ReadException()
         f = firmware_rev[1].split(".")
         try:
