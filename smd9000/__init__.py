@@ -3,9 +3,9 @@
   SMD9000 Python Package
 """
 from smd9000.smd9000 import SMD9000ReadException
-from smd9000.smd9000 import SMD9000Revisions, SMD9000Data
+from smd9000.smd9000 import SMD9000Revisions, SMD9000Data, SMD9000StatusCodeErrors
 from smd9000.smd9000 import SMD9000
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 
 

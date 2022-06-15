@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2021 Strain Measurement Devices
+Copyright (c) 2022 Strain Measurement Devices
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
