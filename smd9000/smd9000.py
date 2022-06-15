@@ -56,12 +56,16 @@ class SMD9000StatusCodeErrors(enum.Enum):
 class SMD9000:
     def __init__(self):
         """Initialization of the SMD9000 class"""
-        self.is_connected = False               # Flag to determine if the sensor is connected
         self._ser = None                        # Reference to a serial class object
         self._ser_lock = threading.Lock()       # Create a lock, in case the library is to be used with multiple threads
         self._baud_rate = 115200                # Baud Rate of the sensor
         self._log = logging.getLogger('SMD9000')    # Get a logger with the name 'SMD9000'
         self._log_uart = logging.getLogger('SMD9000_UART')    # Get a logger specific for UART communication
+
+        self.is_data_streaming = False
+        """Whether there is a current data stream on-going"""
+        self.is_connected = False
+        """Flag to determine if the sensor is connected"""
 
         self._read_thread = None        # type: threading.Thread
         self._exit_read_thread_def = False
@@ -133,6 +137,7 @@ class SMD9000:
             self._read_thread = threading.Thread(target=self._read_thread_def, args=(callback_def, ))
         self._read_thread.start()
         self._ser_write('datastreamon')
+        self.is_data_streaming = True
 
     def stop_data_stream(self):
         """
@@ -142,6 +147,7 @@ class SMD9000:
         self._exit_read_thread_def = True
         self._read_thread.join()
         self._read_thread = None
+        self.is_data_streaming = False
 
     def read(self) -> SMD9000Data:
         """

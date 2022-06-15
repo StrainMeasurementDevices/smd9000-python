@@ -24,24 +24,15 @@ SMD9000 Main Class
 ++++++++++++++++++++++++
 
 .. autoclass:: SMD9000
-  :members:
-  :undoc-members:
 
 SMD9000 Data Classes
 ++++++++++++++++++++++++
 .. autoclass:: SMD9000Revisions
-  :members:
-  :undoc-members:
 
 .. autoclass:: SMD9000Data
-  :members:
-  :undoc-members:
 
 .. autoclass:: SMD9000StatusCodeErrors
-  :members:
-  :undoc-members:
 
 SMD9000 Exceptions
 ++++++++++++++++++++++++
 .. autoexception:: SMD9000ReadException
-  :members:
