@@ -97,12 +97,11 @@ class SMD9000:
             return False
         self._ser.flush()
         if not self.check_if_device_is_smd9000():
-            self._log.warning("Device that is beign connected is not an SMD9000. Select the right device")
+            self._log.warning("Device that is being connected is not an SMD9000. Select the right device")
             self._ser.close()
             return False
         self._log.info('Found SMD9000 on port %s' % device)
         self.is_connected = True
-
         return True
 
     def disconnect(self):
@@ -227,7 +226,7 @@ class SMD9000:
         """
         if size < 10 and size > 500:
             raise UserWarning("Invalid filter size")
-        self._ser_write('setfilt %d'.format(size))
+        self._ser_write('setfilt {:d}'.format(size))
         self._check_ack()
 
     def get_revisions(self) -> SMD9000Revisions:

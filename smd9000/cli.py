@@ -67,7 +67,7 @@ def getdata(ctx, export_csv):
         return
     c.set_stream_rate(10)
     if export_csv is not None:
-        if not export_csv.endswidth('.csv'):
+        if not export_csv.endswith('.csv'):
             export_csv += '.csv'
         export_file = open(export_csv, 'x')
     print("Press CTRL-C to exit")
