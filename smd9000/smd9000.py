@@ -69,6 +69,8 @@ class SMD9000:
 
         self._read_thread = None        # type: threading.Thread
         self._exit_read_thread_def = False
+        self._read_thread_other_data = None
+        self._read_thread_other_data_event = threading.Event()
 
     def connect(self, device: str) -> bool:
         """
@@ -95,6 +97,8 @@ class SMD9000:
             if self._ser is not None:
                 self._ser.close()
             return False
+        # Send this command in case there was a previous on-going data stream that didn't stop for some reason
+        self._ser_write('datastreamoff')
         self._ser.flush()
         if not self.check_if_device_is_smd9000():
             self._log.warning("Device that is being connected is not an SMD9000. Select the right device")
@@ -102,6 +106,9 @@ class SMD9000:
             return False
         self._log.info('Found SMD9000 on port %s' % device)
         self.is_connected = True
+        # TODO: Have a way to parse the current format, and set it back after disconnecting
+        # Set the datastream data format to what is expected from this package
+        self._ser_write('set_datastream_format 1 2 3 4 5')
         return True
 
     def disconnect(self):
@@ -118,8 +125,12 @@ class SMD9000:
         while not self._exit_read_thread_def:
             if self._ser.in_waiting:
                 r = self._ser_read_until()
-                # TODO: Check for ok
-                d = self._interpret_flow_data(r)
+                try:
+                    d = self._interpret_flow_data(r)
+                except UserWarning:
+                    self._read_thread_other_data = r
+                    self._read_thread_other_data_event.set()
+                    continue
                 if callback_thread is not None:
                     callback_thread(d)
 
@@ -280,7 +291,7 @@ class SMD9000:
             raise SMD9000ReadException()
         self._wait_for_calibration()
 
-    def calibration_for_flow(self, expected_flow: float):
+    def calibration_for_flow(self):
         """
         Performs a flow calibration reading with a current expected flowrate.
         The sensor takes a 10-second reading and records all internal values to be used during calibration with a cumulative average.
@@ -295,23 +306,49 @@ class SMD9000:
             TimeoutError: If the sensor does not respond with a *"Cal Done"* after 20 seconds.
             SMD9000ReadException: If the sensor did not return the initial *"Cal Started"*
         """
-        self._ser_write('calflow {:f}'.format(expected_flow))
-        r = self._ser_read_until()
-        if r != "Cal Started":
-            raise SMD9000ReadException()
+        self._ser_write('calflow')
+        if self.is_data_streaming:
+            if not self._read_thread_other_data_event.wait(2):
+                raise SMD9000ReadException()
+            if self._read_thread_other_data != "Cal Started":
+                raise SMD9000ReadException()
+        else:
+            r = self._ser_read_until()
+            if r != "Cal Started":
+                raise SMD9000ReadException()
         self._wait_for_calibration()
+
+    def calibration_set_real_flow(self, real_flow: float):
+        """
+        The real flowrate while the sensor was calibrating with the :func`calibration_for_flow` command
+
+        Args:
+            real_flow: The flow to calibrate up to
+
+        Raises:
+            SMD9000ReadException: If the sensor did not acknowledge the command
+        """
+        self._ser_write('calrealflow {:.2f}'.format(real_flow))
+        self._check_ack()
 
     def _wait_for_calibration(self):
         """
         Internal function that waits for the sensor to be calibrated
         """
         start_time = time.time()
-        while 1:
-            if time.time() - start_time > 20:
-                raise TimeoutError("Timeout waiting for a calibration data complete readout")
-            r = self._ser_read_until()
-            if r == "Cal Done":
-                break
+        if self.is_data_streaming:
+            if not self._read_thread_other_data_event.wait(20):
+                raise SMD9000ReadException()
+            if self._read_thread_other_data != "Cal Done":
+                self._log.warning("Expected `Cal Done`, instead got {}".format(self._read_thread_other_data))
+                raise SMD9000ReadException()
+        else:
+            while 1:
+                if time.time() - start_time > 20:
+                    raise TimeoutError("Timeout waiting for a calibration data complete readout")
+                r = self._ser_read_until()
+                if r == "Cal Done":
+                    break
 
     def set_calibration(self):
         """
@@ -333,6 +370,17 @@ class SMD9000:
         Clears the sensor's tare if there was one
         """
         self._ser_write('tare off')
+        self._check_ack()
+
+    def clear_status_code(self):
+        """
+        Clears the sensor's current status code
+        """
+        self._ser_write('clearstatus')
+        self._check_ack()
+
+    def auto_gain(self):
+        self._ser_write('autogain')
         self._check_ack()
 
     ################################################
@@ -395,10 +443,17 @@ class SMD9000:
         """
         Reads the next returned line from the sensor which is expected to be an acknowledgement
         """
-        r = self._ser_read_until()
-        if r != "ok":
-            self._log.warning("Expected `ok`, instead got {}".format(r))
-            raise SMD9000ReadException()
+        if self.is_data_streaming:
+            if not self._read_thread_other_data_event.wait(2):
+                raise SMD9000ReadException()
+            if self._read_thread_other_data != "ok":
+                self._log.warning("Expected `ok`, instead got {}".format(self._read_thread_other_data))
+                raise SMD9000ReadException()
+        else:
+            r = self._ser_read_until()
+            if r != "ok":
+                self._log.warning("Expected `ok`, instead got {}".format(r))
+                raise SMD9000ReadException()
 
     @staticmethod
     def _ieee_float_to_python(ieee_float: str) -> float:
