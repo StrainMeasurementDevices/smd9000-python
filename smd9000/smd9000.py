@@ -323,7 +323,7 @@ class SMD9000:
         The real flowrate while the sensor was calibrating with the :func`calibration_for_flow` command
 
         Args:
-            real_flow: The flow to calibrate up to
+            real_flow: The real flowrate to calibrate to
 
         Raises:
             SMD9000ReadException: If the sensor did not acknowledge the command
@@ -380,6 +380,9 @@ class SMD9000:
         self._check_ack()
 
     def auto_gain(self):
+        """
+        Automatically sets the right gain for the sensor for the right signal strength
+        """
         self._ser_write('autogain')
         self._check_ack()
 
