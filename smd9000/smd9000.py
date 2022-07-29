@@ -98,7 +98,7 @@ class SMD9000:
                 self._ser.close()
             return False
         # Send this command in case there was a previous on-going data stream that didn't stop for some reason
-        self._ser_write('datastreamoff')
+        #self._ser_write('datastreamoff')
         self._ser.flush()
         if not self.check_if_device_is_smd9000():
             self._log.warning("Device that is being connected is not an SMD9000. Select the right device")
@@ -108,7 +108,7 @@ class SMD9000:
         self.is_connected = True
         # TODO: Have a way to parse the current format, and set it back after disconnecting
         # Set the datastream data format to what is expected from this package
-        self._ser_write('set_datastream_format 1 2 3 4 5')
+        #self._ser_write('set_datastream_data 1 2 3 4 5')
         return True
 
     def disconnect(self):
