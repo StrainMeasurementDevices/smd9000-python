@@ -2,16 +2,14 @@
 """
     SMD9000 Python Package
 """
+import logging                                  # Import logging to log
 import enum
+import dataclasses
+import threading                                # Import to create a lock
 import struct
-import enum
 import typing
 import time
 import serial                                   # Import pyserial to interface to the sensor
-import serial.tools.list_ports as serial_tools  # Import the list_ports tools from pyserial to find the SMD9000 sensor.
-import logging                                  # Import logging to log
-import threading                                # Import to create a lock
-import dataclasses
 
 
 class SMD9000ReadException(Exception):
@@ -28,29 +26,40 @@ class SMD9000Revisions:
 
 @dataclasses.dataclass
 class SMD9000Data:
-    flowrate: float
+    flowrate: float = None
     """The flowrate"""
-    accum: float
-    """The accumulated flowrate"""
-    tof: float
-    """Time of Flight"""
-    sig: int
+    dtof: float = None
+    """The Delta Time of Flight"""
+    up_tof: float = None
+    """The upstream Time of Flight"""
+    dn_tof: float = None
+    """The downstream Time of Flight"""
+    sig: int = None
     """The signal strength from 0 to 2047"""
-    stat: int
+    stat: int = None
     """The status code returned from the sensor"""
 
 
 class SMD9000StatusCodeErrors(enum.Enum):
-    NO_ERROR = enum.auto()
+    NO_ERROR = enum.auto
     """Nothing occurred, all good!"""
-    UNEXPECTED_RESET = enum.auto()
+    UNEXPECTED_RESET = enum.auto
     """The device at some point exponentially reset. This needs to be cleared to go away"""
-    LOW_SIGNAL_STRENGTH = enum.auto()
+    LOW_SIGNAL_STRENGTH = enum.auto
     """Low signal strength from the ultrasonic transducers. This probably means there is an air in the tube."""
-    INTERNAL_ALGORITHM_ERROR = enum.auto()
+    INTERNAL_ALGORITHM_ERROR = enum.auto
     """Internal sensor algorithm error"""
-    GENERAL_ERROR = enum.auto()
+    GENERAL_ERROR = enum.auto
     """A general blanket error from the sensor"""
+
+
+class SMD9000DatastreamFormat(enum.Enum):
+    SMD9000_DATA_FLOWRATE = 1
+    SMD9000_DATA_DTOF = 3
+    SMD9000_DATA_UPSTREAM_TOF = 6
+    SMD9000_DATA_DOWNSTREAM_TOF = 7
+    SMD9000_DATA_SIG_STRENGTH = 4
+    SMD9000_DATA_STATUS_CODE = 5
 
 
 class SMD9000:
@@ -62,6 +71,8 @@ class SMD9000:
         self._log = logging.getLogger('SMD9000')    # Get a logger with the name 'SMD9000'
         self._log_uart = logging.getLogger('SMD9000_UART')    # Get a logger specific for UART communication
 
+        self.datastream_format = None   # type: list[SMD9000DatastreamFormat]
+        """An ordered list of the datastream format"""
         self.is_data_streaming = False
         """Whether there is a current data stream on-going"""
         self.is_connected = False
@@ -77,7 +88,7 @@ class SMD9000:
         Connects to a SMD9000 sensor.
 
         Args:
-            device (str, Optional): An optional device name (`COM3` for Win32 or `/dev/ttyUSB0` for UNIX for example) to connect to. If omitted, this function will try to automatically detect one with the :func:`get_available_sensors` function.
+            device (str): An optional device name (`COM3` for Win32 or `/dev/ttyUSB0` for UNIX for example) to connect to.
 
         Returns:
             True or False depending on whether the device connected or now. True meaning it found a device and successfully connected to it
@@ -93,22 +104,22 @@ class SMD9000:
         try:
             self._ser = serial.Serial(device, self._baud_rate, timeout=1)
         except serial.SerialException:
-            self._log.debug('serial.SerialException for device on %s port' % device)
+            self._log.debug('serial.SerialException for device on %s port', device)
             if self._ser is not None:
                 self._ser.close()
             return False
         # Send this command in case there was a previous on-going data stream that didn't stop for some reason
-        #self._ser_write('datastreamoff')
+        self._ser_write('datastreamoff')
         self._ser.flush()
         if not self.check_if_device_is_smd9000():
             self._log.warning("Device that is being connected is not an SMD9000. Select the right device")
             self._ser.close()
             return False
-        self._log.info('Found SMD9000 on port %s' % device)
+        self._log.info('Found SMD9000 on port %s', device)
         self.is_connected = True
         # TODO: Have a way to parse the current format, and set it back after disconnecting
         # Set the datastream data format to what is expected from this package
-        #self._ser_write('set_datastream_data 1 2 3 4 5')
+        self.set_datastream_format([SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE, SMD9000DatastreamFormat.SMD9000_DATA_DTOF, SMD9000DatastreamFormat.SMD9000_DATA_SIG_STRENGTH, SMD9000DatastreamFormat.SMD9000_DATA_STATUS_CODE])
         return True
 
     def disconnect(self):
@@ -181,7 +192,7 @@ class SMD9000:
         self._ser_write('getmc')
         mc = self._ser_read_until()
         mc = mc.split(':')[1].strip()
-        mc = self._ieee_float_to_python(mc)
+        mc = float(mc)
         return mc
 
     def get_offset(self) -> float:
@@ -194,7 +205,7 @@ class SMD9000:
         self._ser_write('getoffset')
         mc = self._ser_read_until()
         mc = mc.split(':')[1].strip()
-        mc = self._ieee_float_to_python(mc)
+        mc = float(mc)
         return mc
 
     def set_stream_rate(self, stream_rate: int) -> None:
@@ -207,7 +218,7 @@ class SMD9000:
         Raises:
             ValueError: If the input stream rate is not withing a valid range
         """
-        if not 1 < stream_rate < 100:
+        if not 1 <= stream_rate <= 100:
             raise ValueError("Invalid streaming rate")
         self._ser_write('setstreamrate {:d}'.format(stream_rate))
         self._check_ack()
@@ -235,7 +246,7 @@ class SMD9000:
         Raises:
             UserWarning: If the size to be set isn't between 10 and 500 inclusive.
         """
-        if size < 10 and size > 500:
+        if 10 > size > 500:
             raise UserWarning("Invalid filter size")
         self._ser_write('setfilt {:d}'.format(size))
         self._check_ack()
@@ -262,13 +273,6 @@ class SMD9000:
             raise SMD9000ReadException()
         ret = SMD9000Revisions(hardware_rev=hardware_rev[1], firmware_rev=firmware_rev[1])
         return ret
-
-    def reset_accumulated(self):
-        """
-        Resets the accumulated flow to zero
-        """
-        self._ser_write('accumzero')
-        self._check_ack()
 
     def calibration_for_zero(self):
         """
@@ -349,6 +353,8 @@ class SMD9000:
                 r = self._ser_read_until()
                 if r == "Cal Done":
                     break
+                if r == "Cal Error":
+                    raise SMD9000ReadException()
 
     def set_calibration(self):
         """
@@ -386,6 +392,14 @@ class SMD9000:
         self._ser_write('autogain')
         self._check_ack()
 
+    def set_datastream_format(self, datastream_format: typing.List[SMD9000DatastreamFormat]):
+        s = 'set_datastream_data'
+        for f in datastream_format:
+            s += ' {:d}'.format(f.value)
+        self._ser_write(s)
+        self._check_ack()
+        self.datastream_format = datastream_format
+
     ################################################
     # Lower Level functions
     ################################################
@@ -415,7 +429,7 @@ class SMD9000:
         with self._ser_lock:
             try:
                 ret = self._ser.read_until()
-                self._log_uart.debug("Read from SMD9000: %s" % ret)
+                self._log_uart.debug("Read from SMD9000: %s", ret)
                 ret = ret.decode('utf-8')
                 ret = ret.rstrip()
                 return ret
@@ -431,15 +445,24 @@ class SMD9000:
         Returns: A :class:`SMD9000Data` class filled with the received data
         """
         r = r.split(',')
-        if len(r) != 5:
+        if len(r) != len(self.datastream_format):
             # TODO: Have this exception somehow to the callback thread, or something
             self._log.error("Received {}".format(r))
             raise UserWarning("Error in the received data")
-        d = SMD9000Data(flowrate=self._ieee_float_to_python(r[0]),
-                        accum=self._ieee_float_to_python(r[1]),
-                        tof=self._ieee_float_to_python(r[2]),
-                        sig=int(r[3]),
-                        stat=int(r[4]))
+        d = SMD9000Data()
+        for i, r_d in enumerate(r):
+            if self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE:
+                d.flowrate = float(r_d)
+            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DTOF:
+                d.dtof = float(r_d)
+            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_UPSTREAM_TOF:
+                d.up_tof = float(r_d)
+            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DOWNSTREAM_TOF:
+                d.dn_tof = float(r_d)
+            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_SIG_STRENGTH:
+                d.sig = int(r_d)
+            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_STATUS_CODE:
+                d.stat = int(r_d)
         return d
 
     def _check_ack(self) -> None:

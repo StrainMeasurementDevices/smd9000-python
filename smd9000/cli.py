@@ -54,7 +54,7 @@ def getdata(ctx, export_csv):
     Starts a data stream from the sensor, printing and optionally recording the returned information
     """
     def datastream_def(d: smd9000.SMD9000Data):
-        user_str = '{:}\t{:f}\t{:f}\t{:f}\t{:d}\t{:d}'.format(datetime.datetime.now().isoformat(), d.flowrate, d.accum, d.tof, d.sig, d.stat)
+        user_str = '{:}\t{:f}\t{:f}\t{:d}\t{:d}'.format(datetime.datetime.now().isoformat(), d.flowrate, d.dtof, d.sig, d.stat)
         print(user_str)
         if export_file is not None:
             user_str = user_str.replace('\t', ',')
@@ -71,7 +71,7 @@ def getdata(ctx, export_csv):
             export_csv += '.csv'
         export_file = open(export_csv, 'x')
     print("Press CTRL-C to exit")
-    print("Time\tFlow\tAccum Flow\tDTOF\tSignal Strength\tStatus")
+    print("Time\tFlow\tDTOF\tSignal Strength\tStatus")
     c.start_data_stream(datastream_def)
     try:
         while 1:
