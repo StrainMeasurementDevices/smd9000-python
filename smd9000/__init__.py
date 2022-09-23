@@ -6,4 +6,4 @@ from smd9000.smd9000 import SMD9000ReadException
 from smd9000.smd9000 import SMD9000Revisions, SMD9000Data, SMD9000StatusCodeErrors, SMD9000DatastreamFormat
 from smd9000.smd9000 import SMD9000
 
-__version__ = '0.4.0-rc1'
+__version__ = '0.4.0'
