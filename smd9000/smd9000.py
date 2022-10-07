@@ -13,11 +13,12 @@ import serial                                   # Import pyserial to interface t
 
 
 class SMD9000ReadException(Exception):
-    pass
+    """An exception that occurs when the sensor returns an unexpected response or did not respond at all"""
 
 
 @dataclasses.dataclass
 class SMD9000Revisions:
+    """A dataclass for the sensor's hardware and firmware revision"""
     firmware_rev: str
     """The firmware revision of the sensor"""
     hardware_rev: str
@@ -26,10 +27,11 @@ class SMD9000Revisions:
 
 @dataclasses.dataclass
 class SMD9000Data:
+    """A dataclass for the sensor's returned data"""
     flowrate: float = None
     """The flowrate"""
-    dtof: float = None
-    """The Delta Time of Flight"""
+    # dtof: float = None
+    # """The Delta Time of Flight"""
     up_tof: float = None
     """The upstream Time of Flight"""
     dn_tof: float = None
@@ -41,6 +43,7 @@ class SMD9000Data:
 
 
 class SMD9000StatusCodeErrors(enum.Enum):
+    """Enum for all possible error codes returned from the sensor"""
     NO_ERROR = enum.auto
     """Nothing occurred, all good!"""
     UNEXPECTED_RESET = enum.auto
@@ -54,8 +57,9 @@ class SMD9000StatusCodeErrors(enum.Enum):
 
 
 class SMD9000DatastreamFormat(enum.Enum):
+    """Enum that corresponds to a datastream data type"""
     SMD9000_DATA_FLOWRATE = 1
-    SMD9000_DATA_DTOF = 3
+    # SMD9000_DATA_DTOF = 3
     SMD9000_DATA_UPSTREAM_TOF = 6
     SMD9000_DATA_DOWNSTREAM_TOF = 7
     SMD9000_DATA_SIG_STRENGTH = 4
@@ -63,6 +67,7 @@ class SMD9000DatastreamFormat(enum.Enum):
 
 
 class SMD9000:
+    """The main SMD9000 class"""
     def __init__(self):
         """Initialization of the SMD9000 class"""
         self._ser = None                        # Reference to a serial class object
@@ -117,9 +122,7 @@ class SMD9000:
             return False
         self._log.info('Found SMD9000 on port %s', device)
         self.is_connected = True
-        # TODO: Have a way to parse the current format, and set it back after disconnecting
-        # Set the datastream data format to what is expected from this package
-        self.set_datastream_format([SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE, SMD9000DatastreamFormat.SMD9000_DATA_DTOF, SMD9000DatastreamFormat.SMD9000_DATA_SIG_STRENGTH, SMD9000DatastreamFormat.SMD9000_DATA_STATUS_CODE])
+        self.datastream_format = self.get_datastream_format()
         return True
 
     def disconnect(self):
@@ -220,7 +223,7 @@ class SMD9000:
         """
         if not 1 <= stream_rate <= 100:
             raise ValueError("Invalid streaming rate")
-        self._ser_write('setstreamrate {:d}'.format(stream_rate))
+        self._ser_write(f'setstreamrate {stream_rate:d}')
         self._check_ack()
 
     def check_if_device_is_smd9000(self) -> bool:
@@ -248,7 +251,7 @@ class SMD9000:
         """
         if 10 > size > 500:
             raise UserWarning("Invalid filter size")
-        self._ser_write('setfilt {:d}'.format(size))
+        self._ser_write(f'setfilt {size:d}')
         self._check_ack()
 
     def get_revisions(self) -> SMD9000Revisions:
@@ -332,7 +335,7 @@ class SMD9000:
         Raises:
             SMD9000ReadException: If the sensor did not acknowledge the command
         """
-        self._ser_write('calrealflow {:.2f}'.format(real_flow))
+        self._ser_write(f'calrealflow {real_flow:.2f}')
         self._check_ack()
 
     def _wait_for_calibration(self):
@@ -344,7 +347,7 @@ class SMD9000:
             if not self._read_thread_other_data_event.wait(20):
                 raise SMD9000ReadException()
             if self._read_thread_other_data != "Cal Done":
-                self._log.warning("Expected `Cal Done`, instead got {}".format(self._read_thread_other_data))
+                self._log.warning("Expected `Cal Done`, instead got %s", self._read_thread_other_data)
                 raise SMD9000ReadException()
         else:
             while 1:
@@ -393,12 +396,41 @@ class SMD9000:
         self._check_ack()
 
     def set_datastream_format(self, datastream_format: typing.List[SMD9000DatastreamFormat]):
+        """
+        Sets the datastream format
+
+        Args:
+            datastream_format: The datastream format to set the sensor to
+        """
         s = 'set_datastream_data'
         for f in datastream_format:
-            s += ' {:d}'.format(f.value)
+            s += f' {f.value:d}'
         self._ser_write(s)
         self._check_ack()
         self.datastream_format = datastream_format
+
+    def get_datastream_format(self) -> typing.List[SMD9000DatastreamFormat]:
+        """
+        Reads and returns the sensor's current data stream format
+
+        Returns: The current datastream format
+        """
+        ds_format = []
+        self._ser_write('get_datastream_format')
+        data = self._ser_read_until()
+        if 'UART Data Stream Format:' not in data:
+            self._log.error("Returned value is invalid: No prefix!")
+            raise SMD9000ReadException()
+        data = data.split(':')[1].strip()
+        data = data.split(' ')
+        for d in data:
+            try:
+                d = int(d)
+            except ValueError as e:
+                self._log.error("Returned value from get_datastream_format command is invalid")
+                raise SMD9000ReadException() from e
+            ds_format.append(SMD9000DatastreamFormat(d))
+        return ds_format
 
     ################################################
     # Lower Level functions
@@ -414,7 +446,7 @@ class SMD9000:
         """
         with self._ser_lock:
             self._ser.write((s+'\n').encode('utf-8'))
-            self._log_uart.debug("Written to SMD9000: %s" % (s+'\n').encode('utf-8'))
+            self._log_uart.debug("Written to SMD9000: %s", (s+'\n').encode('utf-8'))
 
     def _ser_read_until(self) -> str:
         """
@@ -433,8 +465,8 @@ class SMD9000:
                 ret = ret.decode('utf-8')
                 ret = ret.rstrip()
                 return ret
-            except serial.SerialException:
-                raise SMD9000ReadException()
+            except serial.SerialException as e:
+                raise SMD9000ReadException() from e
 
     def _interpret_flow_data(self, r: str) -> SMD9000Data:
         """
@@ -447,14 +479,14 @@ class SMD9000:
         r = r.split(',')
         if len(r) != len(self.datastream_format):
             # TODO: Have this exception somehow to the callback thread, or something
-            self._log.error("Received {}".format(r))
+            self._log.error("Received %s", r)
             raise UserWarning("Error in the received data")
         d = SMD9000Data()
         for i, r_d in enumerate(r):
             if self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE:
                 d.flowrate = float(r_d)
-            elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DTOF:
-                d.dtof = float(r_d)
+            # elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DTOF:
+            #     d.dtof = float(r_d)
             elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_UPSTREAM_TOF:
                 d.up_tof = float(r_d)
             elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DOWNSTREAM_TOF:
@@ -473,12 +505,12 @@ class SMD9000:
             if not self._read_thread_other_data_event.wait(2):
                 raise SMD9000ReadException()
             if self._read_thread_other_data != "ok":
-                self._log.warning("Expected `ok`, instead got {}".format(self._read_thread_other_data))
+                self._log.warning("Expected `ok`, instead got %s", self._read_thread_other_data)
                 raise SMD9000ReadException()
         else:
             r = self._ser_read_until()
             if r != "ok":
-                self._log.warning("Expected `ok`, instead got {}".format(r))
+                self._log.warning("Expected `ok`, instead got %s", r)
                 raise SMD9000ReadException()
 
     @staticmethod

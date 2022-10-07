@@ -1,0 +1,9 @@
+[MASTER]
+ignore = __init__.py,__main__.py
+disable =   no-value-for-parameter,
+            invalid-name,
+            too-many-instance-attributes,
+            too-many-public-methods
+
+[FORMAT]
+max-line-length = 240

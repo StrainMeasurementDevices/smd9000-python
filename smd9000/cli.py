@@ -1,9 +1,10 @@
-import os
+"""
+Command line application for the SMD9000 Package
+"""
 import time
 import logging
-import typing
-import click
 import datetime
+import click
 import smd9000
 
 
@@ -21,7 +22,7 @@ def cli(ctx, verbose: bool, com_port):
         logging.getLogger('cyflash-serial-transport').setLevel(logging.INFO)
     if com_port is None:
         print("Please supply a COM port")
-        return 
+        return
     ctx.obj['COM-PORT'] = com_port
 
 
@@ -40,9 +41,9 @@ def info(ctx, hardware_rev, firmware_rev):
 
     rev = c.get_revisions()
     if hardware_rev:
-        print("SMD9000 Hardware Revision: {:s}".format(rev.hardware_rev))
+        print("SMD9000 Hardware Revision: {:s}", rev.hardware_rev)
     if firmware_rev:
-        print("SMD9000 Firmware Revision: {:s}".format(rev.firmware_rev))
+        print("SMD9000 Firmware Revision: {:s}", rev.firmware_rev)
 
 
 @cli.command()
@@ -53,8 +54,10 @@ def getdata(ctx, export_csv):
     """
     Starts a data stream from the sensor, printing and optionally recording the returned information
     """
+    # pylint: disable=consider-using-with
     def datastream_def(d: smd9000.SMD9000Data):
-        user_str = '{:}\t{:f}\t{:f}\t{:d}\t{:d}'.format(datetime.datetime.now().isoformat(), d.flowrate, d.dtof, d.sig, d.stat)
+        # TODO: Have this format be dynamic depending on the sensor's datastream format
+        user_str = f"{datetime.datetime.now().isoformat()}\t{d.flowrate:f}\t{d.sig:d}\t{d.stat:d}"
         print(user_str)
         if export_file is not None:
             user_str = user_str.replace('\t', ',')
@@ -69,9 +72,9 @@ def getdata(ctx, export_csv):
     if export_csv is not None:
         if not export_csv.endswith('.csv'):
             export_csv += '.csv'
-        export_file = open(export_csv, 'x')
+        export_file = open(export_csv, 'x', encoding='utf-8')
     print("Press CTRL-C to exit")
-    print("Time\tFlow\tDTOF\tSignal Strength\tStatus")
+    print("Time\tFlow\tSignal Strength\tStatus")
     c.start_data_stream(datastream_def)
     try:
         while 1:
@@ -81,7 +84,3 @@ def getdata(ctx, export_csv):
     c.stop_data_stream()
     if export_file is not None:
         export_file.close()
-
-
-if __name__ == "__main__":
-    cli()
