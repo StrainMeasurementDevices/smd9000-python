@@ -30,8 +30,6 @@ class SMD9000Data:
     """A dataclass for the sensor's returned data"""
     flowrate: float = None
     """The flowrate"""
-    # dtof: float = None
-    # """The Delta Time of Flight"""
     up_tof: float = None
     """The upstream Time of Flight"""
     dn_tof: float = None
@@ -59,7 +57,6 @@ class SMD9000StatusCodeErrors(enum.Enum):
 class SMD9000DatastreamFormat(enum.Enum):
     """Enum that corresponds to a datastream data type"""
     SMD9000_DATA_FLOWRATE = 1
-    # SMD9000_DATA_DTOF = 3
     SMD9000_DATA_UPSTREAM_TOF = 6
     SMD9000_DATA_DOWNSTREAM_TOF = 7
     SMD9000_DATA_SIG_STRENGTH = 4
@@ -113,7 +110,7 @@ class SMD9000:
             if self._ser is not None:
                 self._ser.close()
             return False
-        # Send this command in case there was a previous on-going data stream that didn't stop for some reason
+        # Send this command in case there was a previous ongoing data stream that didn't stop for some reason
         self._ser_write('datastreamoff')
         self._ser.flush()
         if not self.check_if_device_is_smd9000():
@@ -249,7 +246,7 @@ class SMD9000:
         Raises:
             UserWarning: If the size to be set isn't between 10 and 500 inclusive.
         """
-        if 10 > size > 500:
+        if 10 > size or size > 500:
             raise UserWarning("Invalid filter size")
         self._ser_write(f'setfilt {size:d}')
         self._check_ack()
@@ -478,15 +475,13 @@ class SMD9000:
         """
         r = r.split(',')
         if len(r) != len(self.datastream_format):
-            # TODO: Have this exception somehow to the callback thread, or something
+            # TODO(Future): Have this exception somehow to the callback thread, or something
             self._log.error("Received %s", r)
             raise UserWarning("Error in the received data")
         d = SMD9000Data()
         for i, r_d in enumerate(r):
             if self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE:
                 d.flowrate = float(r_d)
-            # elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DTOF:
-            #     d.dtof = float(r_d)
             elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_UPSTREAM_TOF:
                 d.up_tof = float(r_d)
             elif self.datastream_format[i] == SMD9000DatastreamFormat.SMD9000_DATA_DOWNSTREAM_TOF:
