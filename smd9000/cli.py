@@ -8,6 +8,23 @@ import click
 from smd9000 import SMD9000, SMD9000Data, SMD9000DatastreamFormat
 
 
+def pretty_print_datastream(df: SMD9000DatastreamFormat) -> str:
+    """
+    Returns a pretty print text for a given datastream format
+    """
+    if df == SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE:
+        return "Flowrate"
+    if df == SMD9000DatastreamFormat.SMD9000_DATA_UPSTREAM_TOF:
+        return "Upstream TOF"
+    if df == SMD9000DatastreamFormat.SMD9000_DATA_DOWNSTREAM_TOF:
+        return "Downstream TOF"
+    if df == SMD9000DatastreamFormat.SMD9000_DATA_SIG_STRENGTH:
+        return "Signal Strength"
+    if df == SMD9000DatastreamFormat.SMD9000_DATA_STATUS_CODE:
+        return "Status Code"
+    # Nothing returned, must be error in the given df variable
+    raise UserWarning("Invalid Datastream Format")
+
 @click.group()
 @click.option('--verbose', '-v', is_flag=True, help="Prints a detailed output of what's going on")
 @click.option('--com-port', '-c', type=str, help="The port that the SMD9000 sensor is connected to")
@@ -29,8 +46,9 @@ def cli(ctx, verbose: bool, com_port):
 @cli.command(no_args_is_help=True)
 @click.option('--hardware-rev', '-h', is_flag=True, help="Gets the hardware revision")
 @click.option('--firmware-rev', '-v', is_flag=True, help="Gets the firmware revision")
+@click.option('--datastream-format', '-d', is_flag=True, help="Gets the current datastream format")
 @click.pass_context
-def info(ctx, hardware_rev, firmware_rev):
+def info(ctx, hardware_rev, firmware_rev, datastream_format):
     """
     Gets information about the connected SMD000
     """
@@ -41,9 +59,16 @@ def info(ctx, hardware_rev, firmware_rev):
 
     rev = c.get_revisions()
     if hardware_rev:
-        print("SMD9000 Hardware Revision: {:s}", rev.hardware_rev)
+        print("SMD9000 Hardware Revision:", rev.hardware_rev)
     if firmware_rev:
-        print("SMD9000 Firmware Revision: {:s}", rev.firmware_rev)
+        print("SMD9000 Firmware Revision:", rev.firmware_rev)
+
+    if datastream_format:
+        d_format = c.get_datastream_format()
+        txt = ""
+        for df in d_format:
+            txt += pretty_print_datastream(df) + ', '
+        print("Datastream Format:", txt[:-2])
 
 
 @cli.command()
@@ -89,16 +114,7 @@ def getdata(ctx, export_csv):
     # Print and write the header
     header_txt = "Time\t"
     for df in datastream_format:
-        if df == SMD9000DatastreamFormat.SMD9000_DATA_FLOWRATE:
-            header_txt += "Flowrate\t"
-        elif df == SMD9000DatastreamFormat.SMD9000_DATA_UPSTREAM_TOF:
-            header_txt += "Upstream TOF\t"
-        elif df == SMD9000DatastreamFormat.SMD9000_DATA_DOWNSTREAM_TOF:
-            header_txt += "Downstream TOF\t"
-        elif df == SMD9000DatastreamFormat.SMD9000_DATA_SIG_STRENGTH:
-            header_txt += "Signal Strength\t"
-        elif df == SMD9000DatastreamFormat.SMD9000_DATA_STATUS_CODE:
-            header_txt += "Status Code\t"
+        header_txt += pretty_print_datastream(df) + '\t'
     header_txt = header_txt[:-1]
     print(header_txt)
     if export_file is not None:
