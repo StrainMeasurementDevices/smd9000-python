@@ -419,7 +419,6 @@ class SMD9000:
             self._log.error("Returned value is invalid: No prefix!")
             raise SMD9000ReadException()
         data = data.split(':')[1].strip()
-        data = data.split(' ')
         for d in data:
             try:
                 d = int(d)
