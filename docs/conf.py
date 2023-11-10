@@ -18,7 +18,7 @@ from smd9000 import __version__
 # -- Project information -----------------------------------------------------
 
 project = 'SMD9000 Python Package'
-copyright = '2022, Strain Measurement Devices'
+copyright = '2023, Strain Measurement Devices'
 author = 'Strain Measurement Devices'
 
 version = __version__
@@ -45,7 +45,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 autodoc_default_options = {
     'member-order': 'bysource',
-    'undoc-members': True,
+    'undoc-members': False,
     'members': True
 }
 

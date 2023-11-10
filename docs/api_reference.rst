@@ -27,12 +27,20 @@ SMD9000 Main Class
 
 SMD9000 Data Classes
 ++++++++++++++++++++++++
-.. autoclass:: SMD9000Revisions
+.. autoclass:: SensorInfo
 
-.. autoclass:: SMD9000Data
+.. autoclass:: DataSet
 
-.. autoclass:: SMD9000StatusCodeErrors
+.. autoclass:: StatusCode
+
+.. autoclass:: StatusWord
+
+.. autoclass:: StreamFormat
+
+.. autoclass:: available_filter_time
 
 SMD9000 Exceptions
 ++++++++++++++++++++++++
-.. autoexception:: SMD9000ReadException
+.. autoexception:: ReadException
+.. autoclass:: InvalidProfile
+.. autoclass:: NotInCalibrationMode
