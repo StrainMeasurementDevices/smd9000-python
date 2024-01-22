@@ -35,7 +35,6 @@ def cli(ctx, verbose: bool, com_port):
     ctx.ensure_object(dict)
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-        logging.getLogger('cyflash-serial-transport').setLevel(logging.INFO)
     if com_port is None:
         print("Please supply a COM port")
         return

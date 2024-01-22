@@ -32,5 +32,5 @@ the UART to UART converter.
 Python Package Installation
 ---------------------------------
 To install the SMD9000 Python package, if you have Python setup on your system simply run the following command after cloning the package repository:
-`pip install <DOWNLOAD_DIRECTORY>`
+`pip install <PATH-TO-DOWNLOADED-FILE>`
 

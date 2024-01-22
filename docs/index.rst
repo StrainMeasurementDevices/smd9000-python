@@ -8,4 +8,5 @@ Table of Contents:
 .. toctree::
 
     getting_started
+    examples
     api_reference

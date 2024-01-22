@@ -63,7 +63,7 @@ class SMD9000SecureFWFileReader:
     Class that handles reading an SMD firmware file and separating it out
     """
     def __init__(self) -> None:
-        self.log = logging.getLogger('SMD9000SecureFWFileReader')
+        self.log = logging.getLogger('smd9000.SecureFWFileReader')
         self.crc_calc = Register(crc_config)
 
     def read(self, file_path) -> FileInfo:
@@ -112,6 +112,41 @@ class SMD9000SecureFWFileReader:
         self.crc_calc.update(b)
         return b
 
+    @staticmethod
+    def is_fw_experimental(fw_file_ref: bytes) -> bool:
+        """Returns True if the firmware file is an experimental version"""
+        if fw_file_ref[3] != 0:
+            return True
+        return False
+
+    @staticmethod
+    def check_fw_upgrade(sensor_fw: str, fw_file_ref: bytes):
+        """
+        Checks if firmware updates are compatible
+        """
+        sensor_fw = sensor_fw.split('+')[0]
+        sensor_fw = sensor_fw.split('.')
+        major, minor, bug = int(sensor_fw[0]), int(sensor_fw[1]), int(sensor_fw[2])
+
+        # cannot go backwards
+        if major > fw_file_ref[0]:
+            return False
+        elif minor > fw_file_ref[1]:
+            return False
+        return True
+
+    @staticmethod
+    def update_fw_config(old_conf: typing.List[bytearray], sensor_rev: str, fw_file_ref: bytes):
+        """
+        Updates the firmware configuration for the newer firmware
+        """
+        fw_file_ref = f"{fw_file_ref[0]:d}.{fw_file_ref[1]:d}.{fw_file_ref[2]:d}"
+
+        # if we are moving to 0.9.x to above and not updating to the same version for some reason
+        if sensor_rev.startswith("0.9.") and not fw_file_ref.startswith("0.9."):
+            del old_conf[0][50:58]
+        return old_conf
+
 
 class SMD9000SecureFirmwareUploader:
     """
@@ -119,7 +154,7 @@ class SMD9000SecureFirmwareUploader:
     """
     def __init__(self, ser: io.RawIOBase) -> None:
         self._ser = ser
-        self.log = logging.getLogger('smd9000Firmware')
+        self.log = logging.getLogger('smd9000.fwupdate')
         self.crc_calc = Calculator(crc_config)
 
     def ping(self):
@@ -157,8 +192,10 @@ class SMD9000SecureFirmwareUploader:
 
     def query(self, command: SMD9000SecureFWCommand, data: bytes = None):
         p = self._craft_packet(command, data)
+        self.log.debug(f"Writing to sensor: {p}")
         self._ser.write(p)
         r = self.get_response()
+        self.log.debug(f"Read from sensor: {r}")
         return r
 
     def get_response(self) -> str:
@@ -178,22 +215,22 @@ class SMD9000SecureFirmwareUploader:
         if data is None:
             data = bytearray()
         if len(data) > 250:
-            self.log.warning("Lenght is greater than 250, not accepting")
+            self.log.warning("Length is greater than 250, not accepting")
             raise SMD9000FirmwareGenericException()
         if command >= 0xE0:
             self.log.warning("Invalid command")
             raise SMD9000FirmwareGenericException()
         comm = bytes([0xFE, command, len(data)])
-        comm += self._append_fe(data)
+        comm += append_fe(data)
         crc_calc = self.crc_calc.checksum(comm)
-        comm += self._append_fe(struct.pack("H", crc_calc))
+        comm += append_fe(struct.pack("H", crc_calc))
         return comm
 
-    @staticmethod
-    def _append_fe(inp: bytes):
-        output = copy.copy(inp)
-        i = output.find(b'\xFE')
-        while i != -1:
-            output = output[:i] + b'\xFE' + output[i:]
-            i = output.find(b'\xFE', i+2)
-        return output
+
+def append_fe(inp: bytes):
+    output = copy.copy(inp)
+    i = output.find(b'\xFE')
+    while i != -1:
+        output = output[:i] + b'\xFE' + output[i:]
+        i = output.find(b'\xFE', i+2)
+    return output

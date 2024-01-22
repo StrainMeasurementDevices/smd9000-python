@@ -9,5 +9,6 @@ from smd9000.smd9000 import available_filter_time
 # Stuff related to firmware updating
 from smd9000.smd9000_firmware import SMD9000SecureFirmwareUploader, SMD9000SecureFWFileReader
 from smd9000.smd9000_firmware import FileInfo
+from smd9000.smd9000_firmware import SMD9000InvalidFirmwareException, SMD9000FirmwareAckException, SMD9000FirmwareGenericException
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
